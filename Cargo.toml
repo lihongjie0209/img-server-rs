@@ -53,6 +53,7 @@ opt-level = 1
 # [profile.dev]
 # opt-level = 1
 
-[[bench]]
-name = "compression_bench"
-harness = false
+# 基准测试暂时注释掉，因为测试文件不存在
+# [[bench]]
+# name = "compression_bench"
+# harness = false

@@ -4,7 +4,7 @@
 *.pdb
 
 # Cargo
-Cargo.lock
+# Cargo.lock - 对于二进制项目，应该提交Cargo.lock以确保依赖版本一致性
 
 # IDE
 .vscode/
@@ -79,3 +79,8 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+scripts/gcp-config.yaml
+scripts/gcp-service-account-key.json
+
+.venv
