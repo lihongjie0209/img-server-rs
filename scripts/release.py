@@ -196,7 +196,7 @@ class GitManager:
     def push_with_tags(self):
         """推送代码和标签"""
         try:
-            subprocess.run(["git", "push", "origin", "main"], cwd=self.project_root, check=True, encoding='utf-8')
+            subprocess.run(["git", "push", "origin", "master"], cwd=self.project_root, check=True, encoding='utf-8')
             subprocess.run(["git", "push", "origin", "--tags"], cwd=self.project_root, check=True, encoding='utf-8')
             return True
         except subprocess.CalledProcessError:
