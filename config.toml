@@ -1,0 +1,43 @@
+# Image Compression Server Configuration
+# This file configures the behavior of the image compression service
+
+[server]
+# Server host and port configuration
+host = "0.0.0.0"
+port = 3030
+
+# Maximum file size in MB that can be uploaded
+max_file_size_mb = 100
+
+# Number of worker threads (optional, defaults to system CPU count)
+# worker_threads = 4
+
+# Enable CORS headers for browser compatibility
+enable_cors = true
+
+[compression]
+# Default compression quality (1-100, higher = better quality, larger file)
+default_quality = 80
+
+# Default compression algorithm
+# Options: "mozjpeg", "jpeg-encoder", "png-quantized"
+default_algorithm = "mozjpeg"
+
+# Enable compression result caching (not yet implemented)
+enable_cache = false
+
+# Cache TTL in minutes (not yet implemented)
+cache_ttl_minutes = 60
+
+# Maximum concurrent compression jobs
+max_concurrent_jobs = 10
+
+[logging]
+# Log level: "error", "warn", "info", "debug", "trace"
+level = "info"
+
+# Enable HTTP request logging
+enable_request_logging = true
+
+# Log compression statistics
+log_compression_stats = true

@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片压缩服务 - Image Compression Server</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .container {
+            max-width: 800px;
+            width: 100%;
+            background: white;
+            border-radius: 24px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+            overflow: hidden;
+            animation: slideIn 0.6s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.2em;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .header p {
+            font-size: 1em;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            padding: 60px 40px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* 中心转换区域 */
+        .transform-area {
+            width: 100%;
+            min-height: 320px;
+            border-radius: 20px;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            margin-bottom: 40px;
+            position: relative;
+        }
+
+        /* 初始上传状态 */
+        .upload-zone {
+            border: 3px dashed #667eea;
+            background: #f8f9ff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 320px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border-radius: 12px;
+            position: relative;
+            box-shadow: 0 4px 6px rgba(102, 126, 234, 0.1);
+        }
+
+        .upload-zone:hover {
+            border-color: #667eea;
+            background: #f8f9ff;
+            transform: translateY(-2px);
+        }
+
+        .upload-zone.dragover {
+            border-color: #667eea;
+            background: #f0f2ff;
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 4em;
+            color: #667eea;
+            margin-bottom: 20px;
+            transition: transform 0.3s ease;
+        }
+
+        .upload-zone:hover .upload-icon {
+            transform: scale(1.1);
+        }
+
+        .upload-text {
+            font-size: 1.4em;
+            color: #333;
+            margin-bottom: 10px;
+            font-weight: 500;
+        }
+
+        .upload-hint {
+            color: #666;
+            font-size: 0.95em;
+        }
+
+        /* 压缩后对比状态 */
+        .comparison-zone {
+            display: none;
+            height: 320px;
+            background: white;
+            border: 2px solid #e9ecef;
+            border-radius: 20px;
+            padding: 30px;
+        }
+
+        .comparison-zone.active {
+            display: flex;
+            animation: fadeInScale 0.5s ease-out;
+        }
+
+        @keyframes fadeInScale {
+            from {
+                opacity: 0;
+                transform: scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .image-comparison {
+            display: flex;
+            width: 100%;
+            gap: 30px;
+            align-items: center;
+        }
+
+        .image-side {
+            flex: 1;
+            text-align: center;
+        }
+
+        .image-preview {
+            max-width: 100%;
+            max-height: 180px;
+            border-radius: 12px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+            object-fit: contain;
+        }
+
+        .image-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 0.9em;
+        }
+
+        .image-label {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .image-stats {
+            color: #666;
+        }
+
+        .arrow {
+            font-size: 2em;
+            color: #667eea;
+            flex-shrink: 0;
+        }
+
+        /* 压缩率显示 */
+        .compression-result {
+            text-align: center;
+            margin: 30px 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 15px;
+            font-size: 1.1em;
+            font-weight: 500;
+            display: none;
+        }
+
+        .compression-result.active {
+            display: block;
+            animation: slideUp 0.5s ease-out 0.3s both;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* 控制面板 */
+        .controls {
+            display: flex;
+            gap: 30px;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 30px;
+            padding: 25px;
+            background: #f8f9fa;
+            border-radius: 15px;
+        }
+
+        .control-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .control-label {
+            font-weight: 600;
+            color: #333;
+            font-size: 0.9em;
+        }
+
+        .algorithm-select {
+            padding: 12px 16px;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            background: white;
+            font-size: 1em;
+            min-width: 180px;
+            cursor: pointer;
+            transition: border-color 0.3s ease;
+        }
+
+        .algorithm-select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .quality-control {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .quality-slider {
+            width: 150px;
+            height: 6px;
+            border-radius: 3px;
+            background: #e9ecef;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .quality-slider::-webkit-slider-thumb {
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        .quality-value {
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        /* 操作按钮 */
+        .actions {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 15px 30px;
+            border: none;
+            border-radius: 12px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 35px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-secondary {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+
+        .btn-secondary:hover {
+            background: #667eea;
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            box-shadow: 0 8px 25px rgba(76, 175, 80, 0.3);
+        }
+
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 35px rgba(76, 175, 80, 0.4);
+        }
+
+        /* 加载状态 */
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* 隐藏的文件输入 */
+        #fileInput {
+            display: none;
+        }
+
+        /* 错误和成功消息 */
+        .message {
+            padding: 15px 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            display: none;
+            text-align: center;
+            font-weight: 500;
+        }
+
+        .message.error {
+            background: #ffebee;
+            color: #c62828;
+            border: 2px solid #f44336;
+        }
+
+        .message.success {
+            background: #e8f5e8;
+            color: #2e7d32;
+            border: 2px solid #4caf50;
+        }
+
+        .message.active {
+            display: block;
+            animation: slideDown 0.3s ease-out;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+                border-radius: 16px;
+            }
+
+            .main-content {
+                padding: 40px 20px;
+            }
+
+            .controls {
+                flex-direction: column;
+                gap: 20px;
+            }
+
+            .image-comparison {
+                flex-direction: column;
+                gap: 20px;
+            }
+
+            .arrow {
+                transform: rotate(90deg);
+            }
+
+            .actions {
+                flex-direction: column;
+                width: 100%;
+            }
+
+            .btn {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+
+        /* 图标 */
+        .icon {
+            display: inline-block;
+            width: 1em;
+            height: 1em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🖼️ 图片压缩服务</h1>
+            <p>高效智能压缩，保持最佳画质</p>
+        </div>
+
+        <div class="main-content">
+            <!-- 错误和成功消息 -->
+            <div id="errorMsg" class="message error"></div>
+            <div id="successMsg" class="message success"></div>
+
+            <!-- 中心转换区域 -->
+            <div class="transform-area">
+                <!-- 初始上传状态 -->
+                <div id="uploadZone" class="upload-zone">
+                    <div class="upload-icon">📁</div>
+                    <div class="upload-text">点击或拖拽文件以上传</div>
+                    <div class="upload-hint">支持 JPEG, PNG, WebP 格式，最大 100MB</div>
+                </div>
+
+                <!-- 压缩后对比状态 -->
+                <div id="comparisonZone" class="comparison-zone">
+                    <div class="image-comparison">
+                        <div class="image-side">
+                            <div class="image-label">原始图片</div>
+                            <img id="originalImage" class="image-preview" alt="原始图片">
+                            <div class="image-info">
+                                <div class="image-stats">
+                                    <div>尺寸: <span id="originalDimensions">-</span></div>
+                                    <div>大小: <span id="originalSize">-</span></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="arrow">→</div>
+
+                        <div class="image-side">
+                            <div class="image-label">压缩后</div>
+                            <img id="compressedImage" class="image-preview" alt="压缩后图片">
+                            <div class="image-info">
+                                <div class="image-stats">
+                                    <div>尺寸: <span id="compressedDimensions">-</span></div>
+                                    <div>大小: <span id="compressedSize">-</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 加载状态 -->
+                <div id="loading" class="loading">
+                    <div class="spinner"></div>
+                    <div>正在压缩图片，请稍候...</div>
+                </div>
+            </div>
+
+            <!-- 压缩率结果 -->
+            <div id="compressionResult" class="compression-result">
+                <span id="compressionText">压缩率: 0% (节省 0 KB)</span>
+            </div>
+
+            <!-- 控制面板 -->
+            <div class="controls">
+                <div class="control-item">
+                    <label class="control-label" for="algorithm">压缩算法</label>
+                    <select id="algorithm" class="algorithm-select">
+                        <option value="mozjpeg">🎯 MozJPEG (高质量JPEG)</option>
+                        <option value="jpeg-encoder">⚡ JPEG-Encoder (快速JPEG)</option>
+                        <option value="png">🎨 PNG 量化压缩</option>
+                    </select>
+                </div>
+
+                <div class="control-item">
+                    <label class="control-label">压缩质量</label>
+                    <div class="quality-control">
+                        <input type="range" id="quality" class="quality-slider" min="1" max="100" value="80">
+                        <div class="quality-value">质量: <span id="qualityValue">80</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="actions">
+                <button id="compressBtn" class="btn btn-primary" disabled>
+                    <span class="icon">🚀</span>
+                    开始压缩
+                </button>
+
+                <button id="recompressBtn" class="btn btn-secondary" style="display: none;">
+                    <span class="icon">🔄</span>
+                    重新压缩
+                </button>
+
+                <a id="downloadBtn" class="btn btn-success" style="display: none;" download>
+                    <span class="icon">💾</span>
+                    下载图片
+                </a>
+
+                <button id="nextBtn" class="btn btn-secondary" style="display: none;" onclick="location.reload()">
+                    <span class="icon">➕</span>
+                    处理下一张
+                </button>
+            </div>
+
+            <!-- 隐藏的文件输入 -->
+            <input type="file" id="fileInput" accept="image/*">
+        </div>
+    </div>
+
+    <script src="app_new.js"></script>
+</body>
+</html>

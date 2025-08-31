@@ -1,0 +1,15 @@
+{
+  "name": "img-server-rs",
+  "version": "1.0.0",
+  "description": "一个高性能的 Rust 图片压缩服务，支持多种压缩算法和流式处理。",
+  "main": "e2e-test.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
