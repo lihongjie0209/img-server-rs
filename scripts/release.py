@@ -58,6 +58,7 @@ class VersionManager:
         
         # 从文件中查找版本号
         version_files = [
+            "Cargo.toml",
             "pyproject.toml",
             "setup.py", 
             "src/core/config.py",
@@ -77,6 +78,13 @@ class VersionManager:
         """从文件中提取版本号"""
         try:
             content = file_path.read_text(encoding='utf-8')
+            
+            # 针对 Cargo.toml 文件的特殊处理
+            if file_path.name == "Cargo.toml":
+                import re
+                match = re.search(r'^\s*version\s*=\s*["\']([^"\']+)["\']', content, re.MULTILINE)
+                if match:
+                    return match.group(1)
             
             patterns = [
                 r'version\s*=\s*["\']([^"\']+)["\']',
@@ -112,6 +120,36 @@ class VersionManager:
         except Exception as e:
             console.print(f"❌ 版本号升级失败: {e}", style="red")
             sys.exit(1)
+    
+    def update_cargo_version(self, new_version):
+        """更新 Cargo.toml 中的版本号"""
+        cargo_toml_path = self.project_root / "Cargo.toml"
+        
+        if not cargo_toml_path.exists():
+            console.print("⚠️ 未找到 Cargo.toml 文件", style="yellow")
+            return False
+        
+        try:
+            content = cargo_toml_path.read_text(encoding='utf-8')
+            
+            # 使用正则表达式替换版本号
+            import re
+            pattern = r'(^\s*version\s*=\s*["\'])([^"\']+)(["\'])'
+            replacement = f'\\g<1>{new_version}\\g<3>'
+            
+            new_content = re.sub(pattern, replacement, content, flags=re.MULTILINE)
+            
+            if new_content != content:
+                cargo_toml_path.write_text(new_content, encoding='utf-8')
+                console.print(f"✅ 已更新 Cargo.toml 版本号: {new_version}", style="green")
+                return True
+            else:
+                console.print("⚠️ Cargo.toml 中未找到版本号或版本号已是最新", style="yellow")
+                return False
+                
+        except Exception as e:
+            console.print(f"❌ 更新 Cargo.toml 失败: {e}", style="red")
+            return False
 
 class GitManager:
     """Git管理器"""
@@ -191,6 +229,77 @@ class GitManager:
             )
             return True
         except subprocess.CalledProcessError:
+            return False
+    
+    def delete_tag(self, tag):
+        """删除本地和远程标签"""
+        try:
+            # 删除本地标签
+            subprocess.run(
+                ["git", "tag", "-d", tag],
+                cwd=self.project_root,
+                check=False,  # 如果标签不存在，不要失败
+                capture_output=True,
+                encoding='utf-8'
+            )
+            
+            # 删除远程标签
+            subprocess.run(
+                ["git", "push", "origin", f":refs/tags/{tag}"],
+                cwd=self.project_root,
+                check=False,  # 如果远程标签不存在，不要失败
+                capture_output=True,
+                encoding='utf-8'
+            )
+            
+            return True
+        except subprocess.CalledProcessError:
+            return False
+    
+    def get_existing_tags(self):
+        """获取现有的版本标签"""
+        try:
+            result = subprocess.run(
+                ["git", "tag", "-l", "v*"],
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                cwd=self.project_root
+            )
+            
+            if result.returncode == 0:
+                tags = result.stdout.strip().split('\n')
+                # 过滤空行并移除v前缀，然后按版本号排序
+                versions = []
+                for tag in tags:
+                    if tag.strip() and tag.startswith('v'):
+                        version_str = tag[1:]  # 移除v前缀
+                        try:
+                            # 验证是否为有效版本号
+                            version.parse(version_str)
+                            versions.append(version_str)
+                        except:
+                            pass
+                
+                # 按版本号倒序排列（最新的在前）
+                versions.sort(key=lambda x: version.parse(x), reverse=True)
+                return versions
+            return []
+        except:
+            return []
+    
+    def tag_exists(self, tag):
+        """检查标签是否存在"""
+        try:
+            result = subprocess.run(
+                ["git", "tag", "-l", tag],
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                cwd=self.project_root
+            )
+            return result.returncode == 0 and result.stdout.strip() == tag
+        except:
             return False
     
     def push_with_tags(self):
@@ -351,16 +460,55 @@ class ReleaseManager:
         # 检查Git状态
         self._check_git_status()
         
-        # 选择版本类型
-        bump_type = self._select_version_type()
-        
-        # 生成新版本号
-        new_version = self.version_manager.bump_version(bump_type)
-        
-        # 确认发布
-        if not self._confirm_release(new_version):
-            console.print("❌ 发布已取消", style="yellow")
-            return
+        while True:
+            # 选择版本类型
+            bump_type = self._select_version_type()
+            
+            # 生成新版本号
+            if bump_type == "override":
+                new_version = self._select_override_version()
+                if new_version is None:
+                    console.print("❌ 版本选择失败", style="red")
+                    return
+                is_override = True
+            else:
+                new_version = self.version_manager.bump_version(bump_type)
+                is_override = False
+            
+            # 确认发布
+            if is_override:
+                # 对于覆盖版本，直接确认
+                console.print(f"\n⚠️ [yellow]将覆盖版本 v{new_version}[/yellow]")
+                questions = [
+                    InquirerList('confirm',
+                         message="确认覆盖发布?",
+                         choices=['是，覆盖发布', '否，取消发布', '重新选择版本'],
+                         default='否，取消发布')
+                ]
+                answers = prompt(questions)
+                
+                if answers['confirm'].startswith('是'):
+                    break
+                elif answers['confirm'].startswith('重新'):
+                    continue
+                else:
+                    console.print("❌ 发布已取消", style="yellow")
+                    return
+            else:
+                confirm_result = self._confirm_release(new_version)
+                
+                if confirm_result == 'retry':
+                    console.print("🔄 [yellow]请重新选择版本号...[/yellow]")
+                    continue
+                elif confirm_result == 'override':
+                    is_override = True
+                    break
+                elif confirm_result:
+                    is_override = False
+                    break
+                else:
+                    console.print("❌ 发布已取消", style="yellow")
+                    return
         
         # 显示更改预览
         self._show_changes_preview()
@@ -369,7 +517,7 @@ class ReleaseManager:
         commit_message = self._generate_commit_message(new_version)
         
         # 执行发布
-        self._execute_release(new_version, commit_message)
+        self._execute_release(new_version, commit_message, is_override)
     
     def _show_welcome(self):
         """显示欢迎信息"""
@@ -400,7 +548,8 @@ class ReleaseManager:
         choices = [
             f"patch (补丁版本): {current} → {self.version_manager.bump_version('patch')}",
             f"minor (小版本): {current} → {self.version_manager.bump_version('minor')}",
-            f"major (大版本): {current} → {self.version_manager.bump_version('major')}"
+            f"major (大版本): {current} → {self.version_manager.bump_version('major')}",
+            f"override (覆盖已有版本): 从现有版本中选择"
         ]
         
         questions = [
@@ -412,6 +561,46 @@ class ReleaseManager:
         
         answers = prompt(questions)
         return answers['version_type'].split()[0]
+    
+    def _select_override_version(self):
+        """选择要覆盖的版本"""
+        existing_versions = self.git_manager.get_existing_tags()
+        
+        if not existing_versions:
+            console.print("❌ 未找到现有的版本标签", style="red")
+            return None
+        
+        console.print(f"\n📋 [bold]发现 {len(existing_versions)} 个现有版本:[/bold]")
+        
+        # 限制显示数量，避免列表过长
+        display_versions = existing_versions[:10]
+        choices = [f"v{version}" for version in display_versions]
+        
+        if len(existing_versions) > 10:
+            choices.append("... 查看更多版本")
+        
+        questions = [
+            InquirerList('selected_version',
+                 message="选择要覆盖的版本:",
+                 choices=choices,
+                 carousel=True)
+        ]
+        
+        answers = prompt(questions)
+        
+        if answers['selected_version'] == "... 查看更多版本":
+            # 显示所有版本
+            choices = [f"v{version}" for version in existing_versions]
+            questions = [
+                InquirerList('selected_version',
+                     message="选择要覆盖的版本:",
+                     choices=choices,
+                     carousel=True)
+            ]
+            answers = prompt(questions)
+        
+        # 移除v前缀返回版本号
+        return answers['selected_version'][1:]
     
     def _confirm_release(self, new_version):
         """确认发布"""
@@ -430,15 +619,44 @@ class ReleaseManager:
         
         console.print(table)
         
-        questions = [
-            InquirerList('confirm',
-                 message="确认发布?",
-                 choices=['是，继续发布', '否，取消发布'],
-                 default='是，继续发布')
-        ]
+        # 检查是否是相同版本（覆盖发布）
+        tag_name = f"v{new_version}"
+        is_override = self.git_manager.tag_exists(tag_name)
         
-        answers = prompt(questions)
-        return answers['confirm'].startswith('是')
+        if is_override:
+            console.print(f"\n⚠️ [yellow]标签 {tag_name} 已存在！[/yellow]")
+            
+            choices = [
+                '是，覆盖发布（删除现有标签后重新发布）',
+                '否，取消发布',
+                '选择不同的版本号'
+            ]
+            
+            questions = [
+                InquirerList('confirm',
+                     message="检测到版本标签已存在，如何处理?",
+                     choices=choices,
+                     default='否，取消发布')
+            ]
+            
+            answers = prompt(questions)
+            
+            if answers['confirm'].startswith('是'):
+                return 'override'
+            elif answers['confirm'].startswith('选择'):
+                return 'retry'
+            else:
+                return False
+        else:
+            questions = [
+                InquirerList('confirm',
+                     message="确认发布?",
+                     choices=['是，继续发布', '否，取消发布'],
+                     default='是，继续发布')
+            ]
+            
+            answers = prompt(questions)
+            return answers['confirm'].startswith('是')
     
     def _show_changes_preview(self):
         """显示更改预览"""
@@ -498,15 +716,31 @@ class ReleaseManager:
         
         return commit_message
     
-    def _execute_release(self, new_version, commit_message):
+    def _execute_release(self, new_version, commit_message, is_override=False):
         """执行发布"""
         console.print("\n🚀 [bold]开始执行发布...[/bold]")
+        
+        tag_name = f"v{new_version}"
         
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             console=console
         ) as progress:
+            
+            # 如果是覆盖发布，先删除现有标签
+            if is_override:
+                task_delete = progress.add_task("🗑️ 删除现有标签...", total=None)
+                if self.git_manager.delete_tag(tag_name):
+                    console.print(f"✅ 已删除本地和远程标签: {tag_name}", style="green")
+                else:
+                    console.print(f"⚠️ 删除标签时遇到问题，继续执行", style="yellow")
+                progress.remove_task(task_delete)
+            
+            # 更新 Cargo.toml 版本号
+            task0 = progress.add_task("📝 更新 Cargo.toml 版本号...", total=None)
+            self.version_manager.update_cargo_version(new_version)
+            progress.remove_task(task0)
             
             # 提交更改
             task1 = progress.add_task("📝 提交代码更改...", total=None)
@@ -517,7 +751,6 @@ class ReleaseManager:
             
             # 创建标签
             task2 = progress.add_task("🏷️  创建版本标签...", total=None)
-            tag_name = f"v{new_version}"
             tag_message = f"Release version {new_version}"
             if not self.git_manager.create_tag(tag_name, tag_message):
                 console.print("❌ 标签创建失败", style="red")
@@ -532,11 +765,13 @@ class ReleaseManager:
             progress.remove_task(task3)
         
         # 显示成功信息
+        override_text = " (覆盖发布)" if is_override else ""
         console.print()
         console.print(Panel.fit(
-            f"🎉 [bold green]版本 v{new_version} 发布成功![/bold green]\n\n"
+            f"🎉 [bold green]版本 v{new_version}{override_text} 发布成功![/bold green]\n\n"
+            f"✅ Cargo.toml 版本已更新\n"
             f"✅ 代码已提交\n"
-            f"✅ 标签已创建: {tag_name}\n"
+            f"✅ 标签已创建: {tag_name}{override_text}\n"
             f"✅ 已推送到远程仓库\n\n"
             f"🔗 GitHub Actions将自动构建和发布Docker镜像",
             title="发布完成",
